@@ -1,0 +1,19 @@
+{
+	"autoload": {
+		"psr-4": {
+			"libp2p\\": [ "lib", "pb/libp2p" ]
+		}
+	},
+	"repositories": [
+		{
+			"type": "git",
+			"url": "https://github.com/protocolbuffers/protobuf-php/"
+		}
+	],
+    "require": {
+        "monolog/monolog": "^2.3",
+        "phpseclib/phpseclib": "^3.0",
+        "aimeos/map": "^2.4",
+		"google/protobuf": "^3"
+    }
+}

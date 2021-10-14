@@ -3,8 +3,6 @@ namespace libp2p;
 
 use phpseclib3\Crypt\RSA;
 use phpseclib3\Crypt\EC;
-use phpseclib3\File\ASN1;
-use phpseclib3\File\ASN1\Maps;
 use phpseclib3\Crypt\PublicKeyLoader;
 use StephenHill\Base58;
 
@@ -18,42 +16,10 @@ class Crypto {
 
 				$public = PublicKeyLoader::load(file_get_contents('/tmp/pub.pem'), $password = false);
 
-				$raw = $public->toString( 'raw' );
-				echo file_put_contents( '/tmp/pub2.der', ASN1::encodeDER( [
-					'publicKey' => ASN1::encodeDER( [
-						'modulus' => $raw['n'],
-						'publicExponent' => $raw['e'],
-					], [
-						'type' => ASN1::TYPE_SEQUENCE,
-						'children' => [
-							'modulus' => [ 'type' => ASN1::TYPE_INTEGER ],
-							'publicExponent' => [ 'type' => ASN1::TYPE_INTEGER ],
-						],
-					] ),
-					'publicKeyAlgorithm' => [
-						'algorithm' => ASN1::getOID( 'rsaEncryption' ),
-						'parameters' => null,
-					],
-				], [
-					'type' => ASN1::TYPE_SEQUENCE,
-					'children' => [
-						'publicKeyAlgorithm' => [
-							'type' => ASN1::TYPE_SEQUENCE,
-							'children' => [
-								'algorithm' => [ 'type' => ASN1::TYPE_OBJECT_IDENTIFIER ],
-								'parameters' => [ 'type' => ASN1::TYPE_NULL ],
-							]
-						],
-						'publicKey' => [ 'type' => ASN1::TYPE_BIT_STRING ],
-					],
-				] ) );
-
-				exit;
-
 				return [
 					'type'    => $type,
 					'private' => $private->toString( 'pkcs1' ),
-					'public'  => $private->getPublicKey()->toString( 'pkcs1' ),
+					'public'  => $public->toString( 'pkcs1' ),
 				];
 		endswitch;
 

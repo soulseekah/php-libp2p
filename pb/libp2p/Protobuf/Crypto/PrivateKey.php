@@ -14,9 +14,9 @@ use Google\Protobuf\Internal\GPBUtil;
 class PrivateKey extends \Google\Protobuf\Internal\Message
 {
     /**
-     * Generated from protobuf field <code>.KeyType Type = 1;</code>
+     * Generated from protobuf field <code>optional .KeyType Type = 1;</code>
      */
-    protected $Type = 0;
+    protected $Type = null;
     /**
      * Generated from protobuf field <code>bytes Data = 2;</code>
      */
@@ -38,16 +38,26 @@ class PrivateKey extends \Google\Protobuf\Internal\Message
     }
 
     /**
-     * Generated from protobuf field <code>.KeyType Type = 1;</code>
+     * Generated from protobuf field <code>optional .KeyType Type = 1;</code>
      * @return int
      */
     public function getType()
     {
-        return $this->Type;
+        return isset($this->Type) ? $this->Type : 0;
+    }
+
+    public function hasType()
+    {
+        return isset($this->Type);
+    }
+
+    public function clearType()
+    {
+        unset($this->Type);
     }
 
     /**
-     * Generated from protobuf field <code>.KeyType Type = 1;</code>
+     * Generated from protobuf field <code>optional .KeyType Type = 1;</code>
      * @param int $var
      * @return $this
      */

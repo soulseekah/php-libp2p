@@ -2,6 +2,9 @@
 namespace libp2p;
 
 use libp2p\Protobuf;
+use phpseclib3\File\ASN1;
+use phpseclib3\File\ASN1\Maps;
+use phpseclib3\Crypt\PublicKeyLoader;
 
 class Peer {
 	public static function create() {
@@ -9,13 +12,40 @@ class Peer {
 
 		$peer->keypair = Crypto::generate_keypair();
 
+		$raw = PublicKeyLoader::load( $peer->keypair['public'] )->toString( 'raw' );
+
+		$der = ASN1::encodeDER( [
+			'publicKey' => chr( 0x00 /** unused bits */ ) . ASN1::encodeDER( [
+				'modulus' => $raw['n'],
+				'publicExponent' => $raw['e'],
+			], [
+				'type' => ASN1::TYPE_SEQUENCE,
+				'children' => [
+					'modulus' => [ 'type' => ASN1::TYPE_INTEGER ],
+					'publicExponent' => [ 'type' => ASN1::TYPE_INTEGER ],
+				],
+			] ),
+			'publicKeyAlgorithm' => [
+				'algorithm' => ASN1::getOID( 'rsaEncryption' ),
+				'parameters' => null,
+			],
+		], [
+			'type' => ASN1::TYPE_SEQUENCE,
+			'children' => [
+				'publicKeyAlgorithm' => [
+					'type' => ASN1::TYPE_SEQUENCE,
+					'children' => [
+						'algorithm' => [ 'type' => ASN1::TYPE_OBJECT_IDENTIFIER ],
+						'parameters' => [ 'type' => ASN1::TYPE_NULL ],
+					]
+				],
+				'publicKey' => [ 'type' => ASN1::TYPE_BIT_STRING ],
+			],
+		] );
+
 		$pb_public = new Protobuf\Crypto\PublicKey();
 		$pb_public->setType( Protobuf\Crypto\KeyType::RSA );
-		$pb_public->setData( $data = implode( '', array_map( 'chr', [
-		48,130,1,34,48,13,6,9,42,134,72,134,247,13,1,1,1,5,0,3,130,1,15,0,48,130,1,10,2,130,1,1,0,154,53,32,206,140,252,250,79,193,217,177,254,203,14,156,98,65,24,141,216,232,222,200,129,212,75,78,105,241,5,142,175,113,5,80,33,108,11,125,81,226,106,34,132,78,71,55,225,113,53,169,84,203,33,89,83,255,242,141,253,105,118,121,76,38,170,213,7,34,82,49,175,178,219,46,49,216,91,156,166,128,128,59,222,211,199,232,150,207,9,89,217,69,196,81,115,53,99,205,102,132,246,222,89,124,190,192,253,177,18,84,224,32,68,116,78,201,255,182,26,0,209,32,246,187,220,9,185,91,204,237,208,123,112,23,7,98,106,149,232,145,254,41,96,158,117,20,238,155,163,181,6,203,42,63,254,11,110,109,190,174,74,219,103,143,168,85,26,20,216,52,75,160,88,74,171,10,139,183,41,107,110,232,248,92,226,55,95,41,12,93,94,126,185,5,243,212,156,238,108,211,129,246,91,28,232,175,158,68,47,176,242,24,97,14,225,76,131,57,25,226,170,38,10,124,119,186,19,186,236,166,136,9,223,50,170,160,90,232,242,127,249,240,76,229,121,56,134,60,145,227,70,240,113,254,53,2,3,1,0,1
-] ) ) );
-
-		file_put_contents( '/tmp/pub.der', $data );
+		$pb_public->setData( $der );
 
 		$pb_public = $pb_public->serializeToString();
 

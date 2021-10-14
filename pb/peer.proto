@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+option php_namespace = "libp2p\\Protobuf\\Peer";
+option php_metadata_namespace = "libp2p\\Protobuf\\Meta\\Peer";
+
+message Record {
+	message AddressInfo {
+		bytes multiaddr = 1;
+	}
+
+	bytes peer_id = 1;
+	uint64 seq = 2;
+	repeated AddressInfo addresses = 3;
+}
+
+message ID {
+	bytes id = 1;
+	optional bytes pubKey = 2;
+	optional bytes privKey = 3;
+}

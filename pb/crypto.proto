@@ -9,10 +9,10 @@ enum KeyType {
 	Secp256k1 = 2;
 }
 message PublicKey {
-	KeyType Type = 1;
+	optional KeyType Type = 1;
 	bytes Data = 2;
 }
 message PrivateKey {
-	KeyType Type = 1;
+	optional KeyType Type = 1;
 	bytes Data = 2;
 }

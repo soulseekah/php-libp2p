@@ -7,12 +7,10 @@ use phpseclib3\File\ASN1\Maps;
 use phpseclib3\Crypt\PublicKeyLoader;
 
 class Peer {
-	public static function create() {
-		$peer = new Peer();
+	public function __construct() {
+		$this->keypair = Crypto::generate_keypair();
 
-		$peer->keypair = Crypto::generate_keypair();
-
-		$raw = PublicKeyLoader::load( $peer->keypair['public'] )->toString( 'raw' );
+		$raw = PublicKeyLoader::load( $this->keypair['public'] )->toString( 'raw' );
 
 		$der = ASN1::encodeDER( [
 			'publicKey' => chr( 0x00 /** unused bits */ ) . ASN1::encodeDER( [
@@ -49,12 +47,10 @@ class Peer {
 
 		$pb_public = $pb_public->serializeToString();
 
-		$peer->id = Crypto::multihash(
+		$this->id = Crypto::multihash(
 			$pb_public,
 			Crypto::len( $pb_public ) <= 42 ? 'identity': 'sha2-256',
 			'base58btc',
 		);
-
-		return $peer;
 	}
 }

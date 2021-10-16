@@ -9,10 +9,7 @@ $port      = $args->get( 'p', 10333 );
 $dial      = (array) $args->get( 'dial' );
 $transport = $args->get( 'transport' );
 
-$peer = libp2p\Peer::create();
-var_dump( $peer );
-exit;
-
+$peer = new libp2p\Peer();
 $node = new libp2p\Node( $peer, [
 	'addresses' => [
 		'listen' => [
@@ -20,3 +17,8 @@ $node = new libp2p\Node( $peer, [
 		],
 	],
 ] );
+
+$node->handle( '/echo/1.0', function( $message ) {
+} );
+
+$node->start();

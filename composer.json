@@ -15,6 +15,7 @@
         "phpseclib/phpseclib": "^3.0",
         "aimeos/map": "^2.4",
 		"google/protobuf": "^3",
-		"stephenhill/base58": "^1.1"
+		"stephenhill/base58": "^1.1",
+		"evenement/evenement": "^3.0"
     }
 }

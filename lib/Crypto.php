@@ -14,8 +14,6 @@ class Crypto {
 
 				$public = $private->getPublicKey();
 
-				$public = PublicKeyLoader::load(file_get_contents('/tmp/pub.pem'), $password = false);
-
 				return [
 					'type'    => $type,
 					'private' => $private->toString( 'pkcs1' ),

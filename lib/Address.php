@@ -41,4 +41,8 @@ class Address {
 			];
 		}
 	}
+
+	public function get_protocols() {
+		return $this->protocols;
+	}
 }

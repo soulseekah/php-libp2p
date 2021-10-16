@@ -18,6 +18,11 @@ $node = new libp2p\Node( $peer, [
 	],
 ] );
 
+$node->log->pushHandler(
+	new Monolog\Handler\StreamHandler( STDOUT ),
+	$node->log::DEBUG
+);
+
 $node->handle( '/echo/1.0', function( $message ) {
 } );
 

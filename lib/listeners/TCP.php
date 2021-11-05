@@ -57,7 +57,7 @@ class TCP extends Listener {
 				$client = socket_accept( $this->socket );
 
 				socket_getpeername( $client, $address, $port );
-				$this->log->info( 'accept()', compact( 'address', 'port' ) );
+				$this->log->debug( 'accept()', compact( 'address', 'port' ) );
 
 				$connection = new Connection( $this );
 				$this->clients[ $connection->id ] = $client;
@@ -71,7 +71,7 @@ class TCP extends Listener {
 					unset( $this->clients[ $connection_id ] );
 					$this->node->connections[ $connection_id ]->close();
 
-					$this->log->info( 'close()', [ 'connection_id' => $connection_id ] );
+					$this->log->debug( 'close()', [ 'connection_id' => $connection_id ] );
 				}
 			}
 		}
@@ -83,7 +83,7 @@ class TCP extends Listener {
 					if ( $len != mb_strlen( $bytes, '8bit' ) ) {
 						$this->pushback( $connection_id, mb_substr( $bytes, $len - 1, '8bit' ) );
 					}
-					$this->log->info( "send() $len bytes", [ 
+					$this->log->debug( "send() $len bytes", [ 
 						'connection_id' => $connection_id,
 						'bytes' => trim( chunk_split( bin2hex( $bytes ), 2, ' ' ) ),
 					] );
@@ -101,7 +101,7 @@ class TCP extends Listener {
 			return;
 		}
 
-		$this->log->info( 'recv()', [
+		$this->log->debug( 'recv()', [
 			'connection_id' => $connection_id,
 			'bytes' => trim( chunk_split( bin2hex( $bytes ), 2, ' ' ) ),
 		] );

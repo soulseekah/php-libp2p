@@ -32,7 +32,7 @@ class Node extends EventEmitter {
 		$this->log->info( "Starting node", [ 'peer_id' => $this->peer->id ] );
 
 		foreach ( $this->addresses->get( 'listen', [] ) as $address ) {
-			$this->_listeners[] = Transport::create_listener( $this, $address );
+			$this->_listeners[] = Transport::create_listener( $this, $this->peer, $address );
 		}
 
 		foreach ( $this->_listeners as $listener ) {

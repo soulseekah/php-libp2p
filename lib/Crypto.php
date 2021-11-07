@@ -3,6 +3,8 @@ namespace libp2p;
 
 use phpseclib3\Crypt\RSA;
 use phpseclib3\Crypt\EC;
+use phpseclib3\File\ASN1;
+use phpseclib3\File\ASN1\Maps;
 use phpseclib3\Crypt\PublicKeyLoader;
 use StephenHill\Base58;
 
@@ -11,7 +13,6 @@ class Crypto {
 		switch ( strtolower( $type ) ) :
 			case 'rsa':
 				$private = RSA::createKey( $bits );
-
 				$public = $private->getPublicKey();
 
 				return [
@@ -22,6 +23,49 @@ class Crypto {
 		endswitch;
 
 		throw new \InvalidArgumentException( "Invalid type: $type" );
+	}
+
+	public static function to_object( $key ) {
+		return PublicKeyLoader::load( $key );
+	}
+
+	public static function marshal( $key ) {
+		$raw = self::to_object( $key )->toString( 'raw' );
+
+		$der = ASN1::encodeDER( [
+			'publicKey' => chr( 0x00 /** unused bits */ ) . ASN1::encodeDER( [
+				'modulus' => $raw['n'],
+				'publicExponent' => $raw['e'],
+			], [
+				'type' => ASN1::TYPE_SEQUENCE,
+				'children' => [
+					'modulus' => [ 'type' => ASN1::TYPE_INTEGER ],
+					'publicExponent' => [ 'type' => ASN1::TYPE_INTEGER ],
+				],
+			] ),
+			'publicKeyAlgorithm' => [
+				'algorithm' => ASN1::getOID( 'rsaEncryption' ),
+				'parameters' => null,
+			],
+		], [
+			'type' => ASN1::TYPE_SEQUENCE,
+			'children' => [
+				'publicKeyAlgorithm' => [
+					'type' => ASN1::TYPE_SEQUENCE,
+					'children' => [
+						'algorithm' => [ 'type' => ASN1::TYPE_OBJECT_IDENTIFIER ],
+						'parameters' => [ 'type' => ASN1::TYPE_NULL ],
+					]
+				],
+				'publicKey' => [ 'type' => ASN1::TYPE_BIT_STRING ],
+			],
+		] );
+
+		$pb_public = new Protobuf\Crypto\PublicKey();
+		$pb_public->setType( Protobuf\Crypto\KeyType::RSA );
+		$pb_public->setData( $der );
+
+		return $pb_public->serializeToString();
 	}
 
 	public static function multihash( $data, $name, $encode = null ) {

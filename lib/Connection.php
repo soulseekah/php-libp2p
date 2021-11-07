@@ -13,13 +13,17 @@ class Connection {
 
 	private $state = self::STATE_NEW;
 
+	private Node $node;
+	private Peer $peer;
 	private Listener $listener;
 	private string $send_queue = '';
 
 	private Noise $noise;
 
-	public function __construct( Listener $listener ) {
+	public function __construct( Node $node, Peer $peer, Listener $listener ) {
 		$this->id = Uuid::uuid4();
+		$this->node = $node;
+		$this->peer = $peer;
 		$this->listener = $listener;
 	}
 
@@ -41,30 +45,24 @@ class Connection {
 				list( $out, $buffer )  = self::consume( $buffer, $length );
 
 				if ( trim( $out ) === '/multistream/1.0.0' ) {
-					$this->queue_send( hex2bin( VarInt::packUint( mb_strlen( $out, '8bit' ) ) ) . $out );
+					$this->queue_send( hex2bin( VarInt::packUint( Crypto::len( $out ) ) ) . $out );
 					break;
 				}
 
 				if ( trim( $out ) === '/noise' ) {
-					$this->noise = new Noise();
+					$this->noise = new Noise( $this->listener->log, $this->peer->keypair, false );
 					$this->state = self::STATE_HANDSHAKE;
-					$this->queue_send( hex2bin( VarInt::packUint( mb_strlen( $out, '8bit' ) ) ) . $out );
+					$this->queue_send( hex2bin( VarInt::packUint( Crypto::len( $out ) ) ) . $out );
 					break;
 				}
 
 				$out = "na\n";
-				$this->queue_send( hex2bin( VarInt::packUint( mb_strlen( $out, '8bit' ) ) ) . $out );
+				$this->queue_send( hex2bin( VarInt::packUint( Crypto::len( $out ) ) ) . $out );
 				break;
 
 			case self::STATE_HANDSHAKE:
-				if ( ! $this->noise->is_expecting() ) {
-					list( $length, $buffer ) = self::consume( $buffer, 2 );
-					$this->noise->expect( hexdec( bin2hex( $length ) ) );
-				}
-
 				$buffer = $this->noise->push( $buffer );
-
-				$this->noise->tick();
+				$this->queue_send( $this->noise->tick() );
 				break;
 		endswitch;
 	}

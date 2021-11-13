@@ -2,8 +2,7 @@
 namespace libp2p;
 
 use libp2p\Noise\HandshakeState;
-use phpseclib3\Crypt\EC;
-use phpseclib3\Crypt\DH;
+use phpseclib3\Crypt\RSA;
 
 class Noise {
 	private int $expecting = 0;
@@ -17,7 +16,8 @@ class Noise {
 	public function __construct( \Monolog\Logger $log, array $keypair, bool $initiator ) {
 		$this->log = $log->withName( static::class );
 		$this->keypair = $keypair;
-		$this->handshake = new HandshakeState( $initiator, EC::createKey( 'Curve25519' ) );
+		// $this->handshake = new HandshakeState( $initiator, sodium_crypto_box_keypair() );
+		$this->handshake = new HandshakeState( $initiator, hex2bin( 'a3a203e9630758e589476fc55c339c79d6d270573ca95f177703da03f6dd2dbedfa385060bce7e429ccc2b30d1edc8b8db00d1a803ac67040f0823a4c725596c' ) );
 	}
 
 	public function expect( int $bytes ) {
@@ -44,35 +44,62 @@ class Noise {
 			return;
 		}
 
-		if ( Crypto::len( $this->buffer ) !== 32 ) {
-			$this->log->error( 'Unexpected handshake e', [ 'bytes' => trim( chunk_split( bin2hex( $this->buffer ), 2, ' ' ) ) ] );
-			return;
+		if ( $this->handshake->stage === 0 ) {
+			// Stage 0
+			if ( Crypto::len( $this->buffer ) !== 32 ) {
+				$this->log->error( 'Unexpected handshake e', [ 'bytes' => trim( chunk_split( bin2hex( $this->buffer ), 2, ' ' ) ) ] );
+				return;
+			}
+
+			$this->log->debug( 'Handshake: stage 0 received Message A', [ 'e' => bin2hex( $this->buffer ) ] );
+			$this->handshake->re = $this->buffer;
+			$this->handshake->symmetric->MixHash( $this->handshake->re );
+			$this->handshake->symmetric->MixHash( '' );
+
+			// Stage 1
+			$payload = Crypto::to_object( $this->keypair['private'] )
+				->withPadding( RSA::SIGNATURE_PKCS1 )
+				->sign( 'noise-libp2p-static-key:' . sodium_crypto_box_publickey( $this->handshake->s ) );
+
+			$pb_payload = new Protobuf\Noise\HandshakePayload();
+			$pb_payload->setIdentityKey( Crypto::marshal( $this->keypair['public'] ) );
+			$pb_payload->setIdentitySig( $payload );
+			$pb_payload->setData( null );
+
+			return $this->send( $pb_payload->serializeToString() );
 		}
-
-		$this->log->debug( 'Handshake e', [ 'bytes' => trim( chunk_split( bin2hex( $this->buffer ), 2, ' ' ) ) ] );
-		$this->handshake->re = $this->buffer;
-		$this->handshake->symmetric->MixHash( $this->handshake->re );
-
-		$payload = Crypto::to_object( $this->keypair['private'] )
-			->sign( 'noise-libp2p-static-key:' . $this->handshake->s->getPublicKey()->getEncodedCoordinates() );
-
-		$pb_payload = new Protobuf\Noise\HandshakePayload();
-		$pb_payload->setIdentityKey( Crypto::marshal( $this->keypair['public'] ) );
-		$pb_payload->setIdentitySig( $payload = Crypto::to_object( $this->keypair['private'] )
-			->sign( 'noise-libp2p-static-key:' . $this->handshake->s->getPublicKey()->getEncodedCoordinates() ) );
-
-		return $this->send( $pb_payload->serializeToString() );
+		
+		var_dump( $this->handshake->stage );
+		var_dump( bin2hex( $this->buffer ) );
+		exit;
 	}
 
 	public function send( $bytes ) {
-		$this->handshake->e = EC::createKey( 'Curve25519' );
-		$out = $this->handshake->e->getPublicKey()->getEncodedCoordinates();
+		if ( $this->handshake->stage === 0 ) {
+			// $this->handshake->e = sodium_crypto_box_keypair();
+			$this->handshake->e = hex2bin( 'f3472b81ce399447f68d1ad42e1a8e2a7e2c74d205ed577d72f4fcc007a3d591e85df89fb80d2ef1e306d941f7e481ec2405c893a458709457a01df767497d34' );;
+			$e = sodium_crypto_box_publickey( $this->handshake->e );
 
-		$this->handshake->symmetric->MixHash( $this->handshake->e );
-		$this->handshake->symmetric->MixKey( DH::computeSecret( $this->handshake->e, $this->handshake->re ) );
-		exit;
+			$this->handshake->symmetric->MixHash( $e );
+			$this->handshake->symmetric->MixKey( sodium_crypto_scalarmult( sodium_crypto_box_secretkey( $this->handshake->e ), $this->handshake->re ) );
 
-		return pack( 'n', Crypto::len( $out ) ) . $out;
+			$s = $this->handshake->symmetric->EncryptAndHash( sodium_crypto_box_publickey( $this->handshake->s ) );
+			$this->handshake->symmetric->MixKey( sodium_crypto_scalarmult( sodium_crypto_box_secretkey( $this->handshake->s ), $this->handshake->re ) );
+
+			$payload = $this->handshake->symmetric->EncryptAndHash( $bytes );
+
+			$this->log->debug( 'Handshake: stage 1 sent Message B', [
+				'e' => bin2hex( $e ),
+				's' => bin2hex( sodium_crypto_box_publickey( $this->handshake->s ) ),
+				'payload' => bin2hex( $bytes ),
+			] );
+
+			$out = implode( '', [ $e, $s, $payload ] );
+
+			$this->handshake->stage++;
+
+			return pack( 'n', Crypto::len( $out ) ) . $out;
+		}
 	}
 
 	public static function consume( $bytes, $length ) {
@@ -85,14 +112,9 @@ class Noise {
 
 namespace libp2p\Noise;
 
-use phpseclib3\Crypt\EC;
-use phpseclib3\Crypt\ChaCha20;
-
 class CipherState {
 	public $k;
 	public $n;
-
-	public ChaCha20 $c;
 }
 
 class SymmetricState {
@@ -101,9 +123,9 @@ class SymmetricState {
 	public $h;
 
 	public function __construct() {
-		$this->h = hash( 'sha256', 'Noise_XX_25519_ChaChaPoly_SHA256', true );
+		$this->h = 'Noise_XX_25519_ChaChaPoly_SHA256';
 		$this->ck = $this->h;
-
+		$this->MixHash( '' );
 		$this->cipher = new CipherState();
 	}
 
@@ -117,24 +139,48 @@ class SymmetricState {
 		$iv = hash_hmac( 'sha256', $key, $this->ck, true );
 		$this->ck = hash_hmac( 'sha256', "\x01", $iv, true );
 		$this->cipher->k = hash_hmac( 'sha256', $this->ck . "\x02", $iv, true );
-		$this->cipher->c = new ChaCha20();
-		$this->cipher->c->setKey( $this->cipher->k );
+	}
+
+	public function EncryptAndHash( $plaintext ) {
+		$ciphertext = sodium_crypto_aead_chacha20poly1305_ietf_encrypt( $plaintext, $this->h, pack( 'xxxxP', $this->cipher->n ), $this->cipher->k );
+		$this->MixHash( $ciphertext );
+		$this->cipher->n++;
+		return $ciphertext;
 	}
 }
 
 class HandshakeState {
 	public SymmetricState $symmetric;
-	public EC\PrivateKey $s;
-	public EC\PrivateKey $e;
-	public $rs;
-	public $re;
+	public string $s;
+	public string $e;
+	public string $rs;
+	public string $re;
+	public int $stage = 0;
 
 	public bool $initiator;
 
-	public function __construct( bool $initiator, EC\PrivateKey $s ) {
+	public function __construct( bool $initiator, string $s ) {
 		$this->initiator = $initiator;
 		$this->s = $s;
 
 		$this->symmetric = new SymmetricState();
+	}
+
+	public function dump() {
+		$h = 'bin2hex';
+		return [
+			's' => $h( $this->s ),
+			'e' => $h( $this->e ),
+			're' => $h( $this->re ),
+
+			'ss' => [
+				'cs' => [
+					'k' => $h( $this->symmetric->cipher->k ),
+					'n' => $this->symmetric->cipher->n,
+				],
+				'ck' => $h( $this->symmetric->ck ),
+				'h' => $h( $this->symmetric->h ),
+			],
+		];
 	}
 }

@@ -22,9 +22,9 @@ class HandshakePayload extends \Google\Protobuf\Internal\Message
      */
     protected $identity_sig = '';
     /**
-     * Generated from protobuf field <code>bytes data = 3;</code>
+     * Generated from protobuf field <code>optional bytes data = 3;</code>
      */
-    protected $data = '';
+    protected $data = null;
 
     /**
      * Constructor.
@@ -87,16 +87,26 @@ class HandshakePayload extends \Google\Protobuf\Internal\Message
     }
 
     /**
-     * Generated from protobuf field <code>bytes data = 3;</code>
+     * Generated from protobuf field <code>optional bytes data = 3;</code>
      * @return string
      */
     public function getData()
     {
-        return $this->data;
+        return isset($this->data) ? $this->data : '';
+    }
+
+    public function hasData()
+    {
+        return isset($this->data);
+    }
+
+    public function clearData()
+    {
+        unset($this->data);
     }
 
     /**
-     * Generated from protobuf field <code>bytes data = 3;</code>
+     * Generated from protobuf field <code>optional bytes data = 3;</code>
      * @param string $var
      * @return $this
      */

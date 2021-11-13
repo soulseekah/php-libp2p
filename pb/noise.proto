@@ -6,5 +6,5 @@ option php_metadata_namespace = "libp2p\\Protobuf\\Meta\\Noise";
 message HandshakePayload {
 	bytes identity_key = 1;
 	bytes identity_sig = 2;
-	bytes data = 3;
+	optional bytes data = 3;
 }

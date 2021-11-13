@@ -23,6 +23,10 @@ class Noise {
 		$this->handshake = new HandshakeState( $initiator, hex2bin( 'a3a203e9630758e589476fc55c339c79d6d270573ca95f177703da03f6dd2dbedfa385060bce7e429ccc2b30d1edc8b8db00d1a803ac67040f0823a4c725596c' ) );
 	}
 
+	public function is_connected() {
+		return $this->handshake && ( $this->handshake->stage > 2 );
+	}
+
 	public function expect( int $bytes ) {
 		$this->expecting = $bytes;
 	}
@@ -115,11 +119,24 @@ class Noise {
 			$this->handshake->stage++;
 			return;
 		}
+	}
 
-		if ( $this->handshake->stage > 2 ) {
-			// Secure messaging
-			var_dump( $this->buffer );
+	public function decrypt() {
+		if ( $this->is_expecting() ) {
+			return;
 		}
+
+		$this->expecting = 0;
+		$ciphertext = $this->buffer;
+		$this->buffer = '';
+
+		$cipher = $this->handshake->initiator ? $this->ciphers[1] : $this->ciphers[0];
+		return $cipher->DecryptWithAd( '', $ciphertext );
+	}
+
+	public function encrypt( $plaintext ) {
+		$cipher = $this->handshake->initiator ? $this->ciphers[0] : $this->ciphers[1];
+		return $cipher->EncryptWithAd( '', $plaintext );
 	}
 
 	public function send( $bytes ) {

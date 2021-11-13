@@ -4,9 +4,15 @@ namespace libp2p;
 use libp2p\Protobuf;
 
 class Peer {
-	public function __construct() {
-		// $this->keypair = Crypto::generate_keypair();
-		$this->keypair['public'] = '-----BEGIN PUBLIC KEY-----
+	public function __construct( $private = null, $public = null ) {
+		if ( $public ) {
+			$this->keypair['public'] = $public;
+		} elseif ( $private ) {
+			$this->keypair['private'] = $private;
+			// @todo get public
+		} else {
+			// $this->keypair = Crypto::generate_keypair();
+			$this->keypair['public'] = '-----BEGIN PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAy2WXBnG3uLqzAVZXB4Dd
 H6QcpmPsXK9eHsL2phu9EGTgydYfbJY5RMWe28i4qkQd0oxm36WdRcHs58DcVrVq
 Yx5EI01V3qDOBBIA0jTvwoOyjZVNBCb4DyV3hD8nAGV/agEm1SehBAkONFUf+/kr
@@ -15,7 +21,7 @@ kqrHS9Ya5htaYaSI7vg+uIC8lqcPVhAC38zKR+SPyr3WA1tzeIOszg9pmTaectYB
 9YSo9Wtqrf5WXx+Xjqxf62ph3MIa2GMNbcX/CR11jv22zZ8npkxwL7rWaUza7FgE
 3wIDAQAB
 -----END PUBLIC KEY-----';
-		$this->keypair['private'] = '-----BEGIN RSA PRIVATE KEY-----
+			$this->keypair['private'] = '-----BEGIN RSA PRIVATE KEY-----
 MIIEpAIBAAKCAQEAy2WXBnG3uLqzAVZXB4DdH6QcpmPsXK9eHsL2phu9EGTgydYf
 bJY5RMWe28i4qkQd0oxm36WdRcHs58DcVrVqYx5EI01V3qDOBBIA0jTvwoOyjZVN
 BCb4DyV3hD8nAGV/agEm1SehBAkONFUf+/krkqrHS9Ya5htaYaSI7vg+uIC8lqcP
@@ -42,6 +48,7 @@ KyEp4QKBgQDYXIR1bSXd1TGL8TXEG/dPRYsE50/ZJfaZI4cIr8fn/PyvKQ32Ao2E
 gWAnz0zOT7JL+XV8znZzbgo+mNh//ZtkrDm7pAcBdM+UIo4LtQ7MbwA1SCmeK86x
 m+LkhJjOttNKoyf/VPfH1TO67zq2mpK4XH/YEcLrKYLiUJ0jvXC4+g==
 -----END RSA PRIVATE KEY-----';
+		}
 
 		$pb_public = Crypto::marshal( $this->keypair['public'] );
 		$this->id = Crypto::multihash(

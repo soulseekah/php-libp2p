@@ -68,6 +68,40 @@ class Crypto {
 		return $pb_public->serializeToString();
 	}
 
+	public static function unmarshal( $public ) {
+		$pb_public = new Protobuf\Crypto\PublicKey();
+		$pb_public->mergeFromString( $public );
+
+		if ( $pb_public->getType() === Protobuf\Crypto\KeyType::RSA ) {
+			$der = ASN1::asn1map( ASN1::decodeBER( $pb_public->getData() )[0], [
+				'type' => ASN1::TYPE_SEQUENCE,
+				'children' => [
+					'publicKeyAlgorithm' => [
+						'type' => ASN1::TYPE_SEQUENCE,
+						'children' => [
+							'algorithm' => [ 'type' => ASN1::TYPE_OBJECT_IDENTIFIER ],
+							'parameters' => [ 'type' => ASN1::TYPE_NULL ],
+						]
+					],
+					'publicKey' => [ 'type' => ASN1::TYPE_BIT_STRING ],
+				],
+			] );
+
+			$der = ASN1::asn1map( ASN1::decodeBER( mb_substr( $der['publicKey'], 1, null, '8bit' ) )[0], [
+				'type' => ASN1::TYPE_SEQUENCE,
+				'children' => [
+					'modulus' => [ 'type' => ASN1::TYPE_INTEGER ],
+					'publicExponent' => [ 'type' => ASN1::TYPE_INTEGER ],
+				],
+			] );
+
+			return PublicKeyLoader::load( [
+				'e' => $der['publicExponent'],
+				'n' => $der['modulus'],
+			] )->toString( 'pkcs1' );
+		}
+	}
+
 	public static function multihash( $data, $name, $encode = null ) {
 		switch ( strtolower( $name ) ) :
 			case 'sha2-256':

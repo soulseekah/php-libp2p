@@ -10,6 +10,9 @@ class Noise {
 	private array $keypair;
 
 	private HandshakeState $handshake;
+	private array $ciphers;
+
+	private Peer $peer;
 
 	public \Monolog\Logger $log;
 
@@ -44,17 +47,22 @@ class Noise {
 			return;
 		}
 
+		$this->expecting = 0;
+
 		if ( $this->handshake->stage === 0 ) {
 			// Stage 0
 			if ( Crypto::len( $this->buffer ) !== 32 ) {
-				$this->log->error( 'Unexpected handshake e', [ 'bytes' => trim( chunk_split( bin2hex( $this->buffer ), 2, ' ' ) ) ] );
+				$this->log->error( 'Unexpected handshake: stage 0 received Message A', [ 'bytes' => trim( chunk_split( bin2hex( $this->buffer ), 2, ' ' ) ) ] );
 				return;
 			}
 
 			$this->log->debug( 'Handshake: stage 0 received Message A', [ 'e' => bin2hex( $this->buffer ) ] );
-			$this->handshake->re = $this->buffer;
+
+			list( $this->handshake->re, $this->buffer ) = self::consume( $this->buffer, 32 );
 			$this->handshake->symmetric->MixHash( $this->handshake->re );
 			$this->handshake->symmetric->MixHash( '' );
+
+			$this->handshake->stage++;
 
 			// Stage 1
 			$payload = Crypto::to_object( $this->keypair['private'] )
@@ -68,14 +76,54 @@ class Noise {
 
 			return $this->send( $pb_payload->serializeToString() );
 		}
-		
-		var_dump( $this->handshake->stage );
-		var_dump( bin2hex( $this->buffer ) );
-		exit;
+
+		if ( $this->handshake->stage === 2 ) {
+			// Stage 2
+			if ( Crypto::len( $this->buffer ) < 48 ) {
+				$this->log->error( 'Unexpected handshake: stage 2 received Message C', [ 'bytes' => trim( chunk_split( bin2hex( $this->buffer ), 2, ' ' ) ) ] );
+				return;
+			}
+
+			list( $s, $this->buffer ) = self::consume( $this->buffer, 48 );
+			list( $payload, $this->buffer ) = self::consume( $this->buffer, Crypto::len( $this->buffer ) );
+
+			$this->handshake->rs = $this->handshake->symmetric->DecryptAndHash( $s );
+			$this->handshake->symmetric->MixKey( sodium_crypto_scalarmult( sodium_crypto_box_secretkey( $this->handshake->e ), $this->handshake->rs ) );
+			$payload = $this->handshake->symmetric->DecryptAndHash( $payload );
+
+			$this->ciphers = $this->handshake->symmetric->Split();
+
+			$this->log->debug( 'Handshake: stage 2 received Message C', [
+				's' => bin2hex( $this->handshake->rs ),
+				'payload' => bin2hex( $payload ),
+			] );
+
+			$pb_payload = new Protobuf\Noise\HandshakePayload();
+			$pb_payload->mergeFromString( $payload );
+
+			$this->peer = new Peer( null, Crypto::unmarshal( $pb_payload->getIdentityKey() ) );
+
+			$verifies = Crypto::to_object( $this->peer->keypair['public'] )
+				->withPadding( RSA::SIGNATURE_PKCS1 )
+				->verify( 'noise-libp2p-static-key:' . $this->handshake->rs, $pb_payload->getIdentitySig() );
+
+			if ( ! $verifies ) {
+				$this->log->error( 'Handshake: stage 2 does not verify. Aborting.' );
+				return;
+			}
+
+			$this->handshake->stage++;
+			return;
+		}
+
+		if ( $this->handshake->stage > 2 ) {
+			// Secure messaging
+			var_dump( $this->buffer );
+		}
 	}
 
 	public function send( $bytes ) {
-		if ( $this->handshake->stage === 0 ) {
+		if ( $this->handshake->stage === 1 ) {
 			// $this->handshake->e = sodium_crypto_box_keypair();
 			$this->handshake->e = hex2bin( 'f3472b81ce399447f68d1ad42e1a8e2a7e2c74d205ed577d72f4fcc007a3d591e85df89fb80d2ef1e306d941f7e481ec2405c893a458709457a01df767497d34' );;
 			$e = sodium_crypto_box_publickey( $this->handshake->e );
@@ -115,6 +163,26 @@ namespace libp2p\Noise;
 class CipherState {
 	public $k;
 	public $n;
+
+	public function InitializeKey( $key ) {
+		$this->k = $key;
+		$this->n = 0;
+	}
+
+	public function EncryptWithAd( $ad, $plaintext ) {
+		return sodium_crypto_aead_chacha20poly1305_ietf_encrypt( $plaintext, $ad, pack( 'xxxxP', $this->n++ ), $this->k );
+	}
+
+	public function DecryptWithAd( $ad, $ciphertext ) {
+		return sodium_crypto_aead_chacha20poly1305_ietf_decrypt( $ciphertext, $ad, pack( 'xxxxP', $this->n++ ), $this->k );
+	}
+
+	public function dump() {
+		return [
+			'k' => bin2hex( $this->k ),
+			'n' => $this->n,
+		];
+	}
 }
 
 class SymmetricState {
@@ -134,18 +202,33 @@ class SymmetricState {
 	}
 
 	public function MixKey( $key ) {
-		$this->cipher->n = 0;
-
 		$iv = hash_hmac( 'sha256', $key, $this->ck, true );
 		$this->ck = hash_hmac( 'sha256', "\x01", $iv, true );
-		$this->cipher->k = hash_hmac( 'sha256', $this->ck . "\x02", $iv, true );
+		$this->cipher->InitializeKey( hash_hmac( 'sha256', $this->ck . "\x02", $iv, true ) );
 	}
 
 	public function EncryptAndHash( $plaintext ) {
-		$ciphertext = sodium_crypto_aead_chacha20poly1305_ietf_encrypt( $plaintext, $this->h, pack( 'xxxxP', $this->cipher->n ), $this->cipher->k );
+		$ciphertext = $this->cipher->EncryptWithAd( $this->h, $plaintext );
 		$this->MixHash( $ciphertext );
-		$this->cipher->n++;
 		return $ciphertext;
+	}
+
+	public function DecryptAndHash( $ciphertext ) {
+		$plaintext = $this->cipher->DecryptWithAd( $this->h, $ciphertext );
+		$this->MixHash( $ciphertext );
+		return $plaintext;
+	}
+
+	public function Split() {
+		$okm = hash_hmac( 'sha256', '', $this->ck, true );
+		return array_map( function( $k ) {
+			$c = new CipherState();
+			$c->InitializeKey( $k );
+			return $c;
+		}, [
+			$prev = hash_hmac( 'sha256', "\x1", $okm, true ),
+			hash_hmac( 'sha256', "$prev\x2", $okm, true )
+		] );
 	}
 }
 
@@ -171,15 +254,13 @@ class HandshakeState {
 		return [
 			's' => $h( $this->s ),
 			'e' => $h( $this->e ),
+			'rs' => $h( $this->rs ),
 			're' => $h( $this->re ),
 
 			'ss' => [
-				'cs' => [
-					'k' => $h( $this->symmetric->cipher->k ),
-					'n' => $this->symmetric->cipher->n,
-				],
-				'ck' => $h( $this->symmetric->ck ),
 				'h' => $h( $this->symmetric->h ),
+				'ck' => $h( $this->symmetric->ck ),
+				'cs' => $this->symmetric->cipher->dump(),
 			],
 		];
 	}

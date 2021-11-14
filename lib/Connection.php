@@ -8,7 +8,8 @@ class Connection {
 	public string $id;
 
 	const STATE_NEW = 'new';
-	const STATE_HANDSHAKE = 'handshake';
+	const STATE_ENCRYPT = 'encrypt';
+	const STATE_MPLEX = 'mplex';
 	const STATE_CONNECTED = 'connected';
 	const STATE_CLOSED = 'closed';
 
@@ -20,6 +21,7 @@ class Connection {
 	private string $send_queue = '';
 
 	private Noise $noise;
+	private Mplex $mplex;
 
 	public function __construct( Node $node, Peer $peer, Listener $listener ) {
 		$this->id = Uuid::uuid4();
@@ -46,29 +48,29 @@ class Connection {
 				list( $out, $buffer )  = self::consume( $buffer, $length );
 
 				if ( trim( $out ) === '/multistream/1.0.0' ) {
-					$this->queue_send( hex2bin( VarInt::packUint( Crypto::len( $out ) ) ) . $out );
+					$this->send( hex2bin( VarInt::packUint( Crypto::len( $out ) ) ) . $out );
 					break;
 				}
 
 				if ( trim( $out ) === '/noise' ) {
 					$this->noise = new Noise( $this->listener->log, $this->peer->keypair, false );
-					$this->state = self::STATE_HANDSHAKE;
-					$this->queue_send( hex2bin( VarInt::packUint( Crypto::len( $out ) ) ) . $out );
+					$this->state = self::STATE_ENCRYPT;
+					$this->send( hex2bin( VarInt::packUint( Crypto::len( $out ) ) ) . $out );
 					break;
 				}
 
 				$out = "na\n";
-				$this->queue_send( hex2bin( VarInt::packUint( Crypto::len( $out ) ) ) . $out );
+				$this->send( hex2bin( VarInt::packUint( Crypto::len( $out ) ) ) . $out );
 				break;
 
-			case self::STATE_HANDSHAKE:
+			case self::STATE_ENCRYPT:
 				$buffer = $this->noise->push( $buffer );
-				$this->queue_send( $this->noise->tick() );
+				$this->send( $this->noise->tick() );
 				if ( $this->noise->is_connected() ) {
-					$this->state = self::STATE_CONNECTED;
+					$this->state = self::STATE_MPLEX;
 				}
 				break;
-			case self::STATE_CONNECTED:
+			case self::STATE_MPLEX:
 				$buffer = $this->noise->push( $buffer );
 				if ( $this->noise->is_expecting() ) {
 					break;
@@ -82,22 +84,35 @@ class Connection {
 					if ( trim( $out ) === '/multistream/1.0.0' ) {
 						$out = hex2bin( VarInt::packUint( Crypto::len( $out ) ) ) . $out;
 						$out = $this->noise->encrypt( $out );
-						$this->queue_send( pack( 'n', Crypto::len( $out ) ) . $out );
+						$this->send( pack( 'n', Crypto::len( $out ) ) . $out );
 						continue;
 					}
 
 					if ( trim( $out ) === '/mplex/6.7.0' ) {
 						$out = hex2bin( VarInt::packUint( Crypto::len( $out ) ) ) . $out;
 						$out = $this->noise->encrypt( $out );
-						$this->queue_send( pack( 'n', Crypto::len( $out ) ) . $out );
+						$this->send( pack( 'n', Crypto::len( $out ) ) . $out );
+						$this->state = self::STATE_CONNECTED;
 						continue;
 					}
 
 					$out = "na\n";
 					$out = hex2bin( VarInt::packUint( Crypto::len( $out ) ) ) . $out;
 					$out = $this->noise->encrypt( $out );
-					$this->queue_send( pack( 'n', Crypto::len( $out ) ) . $out );
+					$this->send( pack( 'n', Crypto::len( $out ) ) . $out );
 				}
+				break;
+			case self::STATE_CONNECTED:
+				$buffer = $this->noise->push( $buffer );
+				if ( $this->noise->is_expecting() ) {
+					break;
+				}
+
+				if ( $data = $this->noise->decrypt() ) while ( $data ) {
+					var_dump( $data );
+					exit;
+				}
+
 				break;
 		endswitch;
 	}
@@ -109,7 +124,7 @@ class Connection {
 		];
 	}
 
-	public function queue_send( $bytes ) {
+	public function send( $bytes ) {
 		$this->send_queue .= $bytes;
 	}
 

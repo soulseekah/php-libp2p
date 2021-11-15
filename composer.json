@@ -1,7 +1,9 @@
 {
 	"autoload": {
 		"psr-4": {
-			"libp2p\\": [ "lib", "pb/libp2p" ]
+			"libp2p\\": [ "lib/", "pb/libp2p" ],
+			"libp2p\\Transports\\": "lib/transports",
+			"libp2p\\Listeners\\": "lib/listeners"
 		}
 	},
 	"repositories": [

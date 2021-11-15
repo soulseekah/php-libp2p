@@ -23,7 +23,7 @@ $node->log->pushHandler(
 	$node->log::DEBUG
 );
 
-$node->handle( '/echo/1.0', function( $message ) {
+$node->handle( '/echo/1.0', function( $connection, $message ) {
 } );
 
 $node->start();

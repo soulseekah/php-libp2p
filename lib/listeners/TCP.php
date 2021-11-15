@@ -2,6 +2,7 @@
 namespace libp2p\Listeners;
 
 use libp2p\{Node, Peer, Address, Listener, Connection};
+use libp2p\Crypto;
 
 class TCP extends Listener {
 	private Node $node;
@@ -82,7 +83,7 @@ class TCP extends Listener {
 			if ( $connection_id = array_search( $socket, $this->clients ) ) {
 				if ( $bytes = $this->fetch( $connection_id ) ) {
 					$len = socket_write( $socket, $bytes );
-					if ( $len != mb_strlen( $bytes, '8bit' ) ) {
+					if ( $len != Crypto::len( $bytes ) ) {
 						$this->pushback( $connection_id, mb_substr( $bytes, $len - 1, '8bit' ) );
 					}
 					$this->log->debug( "send() $len bytes", [ 
@@ -103,7 +104,7 @@ class TCP extends Listener {
 			return;
 		}
 
-		$this->log->debug( 'recv()', [
+		$this->log->debug( sprintf( 'recv() %d bytes', Crypto::len( $bytes ) ), [
 			'connection_id' => $connection_id,
 			'bytes' => trim( chunk_split( bin2hex( $bytes ), 2, ' ' ) ),
 		] );

@@ -92,6 +92,7 @@ class Connection {
 						$out = hex2bin( VarInt::packUint( Crypto::len( $out ) ) ) . $out;
 						$out = $this->noise->encrypt( $out );
 						$this->send( pack( 'n', Crypto::len( $out ) ) . $out );
+						$this->mplex = new Mplex();
 						$this->state = self::STATE_CONNECTED;
 						continue;
 					}
@@ -109,8 +110,11 @@ class Connection {
 				}
 
 				if ( $data = $this->noise->decrypt() ) while ( $data ) {
-					var_dump( $data );
-					exit;
+					$this->mplex->recv( $data );
+				}
+					
+				foreach ( $this->mplex->get_send() as $data ) {
+					$this->send( $data );
 				}
 
 				break;

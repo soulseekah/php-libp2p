@@ -7,14 +7,15 @@ use Aimeos\Map;
 use Evenement\EventEmitter;
 
 class Node extends EventEmitter {
+	public Peer $peer;
+	public Logger $log;
 
-	private Peer $peer;
 	private Map $addresses;
 
 	private array $_listeners;
-	public array $connections;
 
-	public Logger $log;
+	public array $connections;
+	public array $handlers;
 
 	public function __construct( Peer $peer, $opts ) {
 		$this->peer = $peer;
@@ -32,7 +33,7 @@ class Node extends EventEmitter {
 		$this->log->info( "Starting node", [ 'peer_id' => $this->peer->id ] );
 
 		foreach ( $this->addresses->get( 'listen', [] ) as $address ) {
-			$this->_listeners[] = Transport::create_listener( $this, $this->peer, $address );
+			$this->_listeners[] = Transport::create_listener( $this, $address );
 		}
 
 		foreach ( $this->_listeners as $listener ) {
@@ -58,7 +59,8 @@ class Node extends EventEmitter {
 		$this->emit( 'stopped' );
 	}
 
-	public function handle() {
+	public function handle( string $protocol, callable $callback ) {
+		$this->handlers[ $protocol ] = $callback;
 	}
 
 	public function accept( Connection $connection ) {

@@ -7,17 +7,15 @@ use libp2p\Crypto;
 class TCP extends Listener {
 	private Node $node;
 	private Address $address;
-	private Peer $peer;
 
 	private $socket;
 	private array $clients;
 
 	const LEN_BUFFER = 2048;
 
-	public function __construct( $transport, Node $node, Peer $peer, Address $address ) {
+	public function __construct( $transport, Node $node, Address $address ) {
 		$this->address = $address;
 		$this->node    = $node;
-		$this->peer    = $peer;
 
 		call_user_func_array( [ parent::class, __FUNCTION__ ], func_get_args() );
 	}
@@ -62,7 +60,7 @@ class TCP extends Listener {
 				socket_getpeername( $client, $address, $port );
 				$this->log->debug( 'accept()', compact( 'address', 'port' ) );
 
-				$connection = new Connection( $this->node, $this->peer, $this );
+				$connection = new Connection( $this->node );
 				$this->clients[ $connection->id ] = $client;
 
 				$this->node->accept( $connection );

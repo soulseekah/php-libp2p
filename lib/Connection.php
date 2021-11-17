@@ -17,17 +17,15 @@ class Connection {
 
 	private Node $node;
 	private Peer $peer;
-	private Listener $listener;
+
 	private string $send_queue = '';
 
 	private Noise $noise;
 	private Mplex $mplex;
 
-	public function __construct( Node $node, Peer $peer, Listener $listener ) {
+	public function __construct( Node $node ) {
 		$this->id = Uuid::uuid4();
 		$this->node = $node;
-		$this->peer = $peer;
-		$this->listener = $listener;
 	}
 
 	public function close() {
@@ -53,7 +51,7 @@ class Connection {
 				}
 
 				if ( trim( $out ) === '/noise' ) {
-					$this->noise = new Noise( $this->listener->log, $this->peer->keypair, false );
+					$this->noise = new Noise( $this->node, false );
 					$this->state = self::STATE_ENCRYPT;
 					$this->send( hex2bin( VarInt::packUint( Crypto::len( $out ) ) ) . $out );
 					break;
@@ -66,8 +64,9 @@ class Connection {
 			case self::STATE_ENCRYPT:
 				$buffer = $this->noise->push( $buffer );
 				$this->send( $this->noise->tick() );
-				if ( $this->noise->is_connected() ) {
+				if ( $peer = $this->noise->is_connected() ) {
 					$this->state = self::STATE_MPLEX;
+					$this->peer = $peer;
 				}
 				break;
 			case self::STATE_MPLEX:
@@ -92,7 +91,7 @@ class Connection {
 						$out = hex2bin( VarInt::packUint( Crypto::len( $out ) ) ) . $out;
 						$out = $this->noise->encrypt( $out );
 						$this->send( pack( 'n', Crypto::len( $out ) ) . $out );
-						$this->mplex = new Mplex();
+						$this->mplex = new Mplex( $this->node, $this->peer );
 						$this->state = self::STATE_CONNECTED;
 						continue;
 					}
@@ -109,14 +108,15 @@ class Connection {
 					break;
 				}
 
-				if ( $data = $this->noise->decrypt() ) while ( $data ) {
-					$this->mplex->recv( $data );
-				}
-					
-				foreach ( $this->mplex->get_send() as $data ) {
-					$this->send( $data );
-				}
+				$data = $this->noise->decrypt();
+				do {
+					$data = $this->mplex->recv( $data );
+				} while ( $data );
 
+				foreach ( $this->mplex->get_send() as $data ) {
+					$data = $this->noise->encrypt( $data );
+					$this->send( pack( 'n', Crypto::len( $data ) ) . $data );
+				}
 				break;
 		endswitch;
 	}

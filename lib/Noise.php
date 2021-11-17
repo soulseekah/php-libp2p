@@ -5,9 +5,10 @@ use libp2p\Noise\HandshakeState;
 use phpseclib3\Crypt\RSA;
 
 class Noise {
+	private Node $node;
+
 	private int $expecting = 0;
 	private $buffer;
-	private array $keypair;
 
 	private HandshakeState $handshake;
 	private array $ciphers;
@@ -16,15 +17,17 @@ class Noise {
 
 	public \Monolog\Logger $log;
 
-	public function __construct( \Monolog\Logger $log, array $keypair, bool $initiator ) {
-		$this->log = $log->withName( static::class );
-		$this->keypair = $keypair;
+	public function __construct( Node $node, bool $initiator ) {
+		$this->log = $node->log->withName( static::class );
+		$this->node = $node;
 		// $this->handshake = new HandshakeState( $initiator, sodium_crypto_box_keypair() );
 		$this->handshake = new HandshakeState( $initiator, hex2bin( 'a3a203e9630758e589476fc55c339c79d6d270573ca95f177703da03f6dd2dbedfa385060bce7e429ccc2b30d1edc8b8db00d1a803ac67040f0823a4c725596c' ) );
 	}
 
 	public function is_connected() {
-		return $this->handshake && ( $this->handshake->stage > 2 );
+		if ( $this->handshake && ( $this->handshake->stage > 2 ) ) {
+			return $this->peer;
+		}
 	}
 
 	public function expect( int $bytes ) {
@@ -69,12 +72,12 @@ class Noise {
 			$this->handshake->stage++;
 
 			// Stage 1
-			$payload = Crypto::to_object( $this->keypair['private'] )
+			$payload = Crypto::to_object( $this->node->peer->keypair['private'] )
 				->withPadding( RSA::SIGNATURE_PKCS1 )
 				->sign( 'noise-libp2p-static-key:' . sodium_crypto_box_publickey( $this->handshake->s ) );
 
 			$pb_payload = new Protobuf\Noise\HandshakePayload();
-			$pb_payload->setIdentityKey( Crypto::marshal( $this->keypair['public'] ) );
+			$pb_payload->setIdentityKey( Crypto::marshal( $this->node->peer->keypair['public'] ) );
 			$pb_payload->setIdentitySig( $payload );
 			$pb_payload->setData( null );
 
@@ -120,6 +123,10 @@ class Noise {
 			return;
 		}
 	}
+	
+	public function get_peer() {
+		return $this->peer;
+	}
 
 	public function decrypt() {
 		if ( $this->is_expecting() ) {
@@ -142,7 +149,7 @@ class Noise {
 	public function send( $bytes ) {
 		if ( $this->handshake->stage === 1 ) {
 			// $this->handshake->e = sodium_crypto_box_keypair();
-			$this->handshake->e = hex2bin( 'f3472b81ce399447f68d1ad42e1a8e2a7e2c74d205ed577d72f4fcc007a3d591e85df89fb80d2ef1e306d941f7e481ec2405c893a458709457a01df767497d34' );;
+			$this->handshake->e = hex2bin( 'f3472b81ce399447f68d1ad42e1a8e2a7e2c74d205ed577d72f4fcc007a3d591e85df89fb80d2ef1e306d941f7e481ec2405c893a458709457a01df767497d34' );
 			$e = sodium_crypto_box_publickey( $this->handshake->e );
 
 			$this->handshake->symmetric->MixHash( $e );

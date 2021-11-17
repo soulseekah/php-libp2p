@@ -23,7 +23,8 @@ $node->log->pushHandler(
 	$node->log::DEBUG
 );
 
-$node->handle( '/echo/1.0', function( $connection, $message ) {
+$node->handle( '/echo/1.0.0', function( string $message, libp2p\Mplex\Stream $stream, libp2p\Peer $peer, libp2p\Node $node ) {
+	$stream->send( $message );
 } );
 
 $node->start();
